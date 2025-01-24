@@ -1,0 +1,8 @@
+Instructions to Run:
+
+
+References
+C# RESTful Web API - https://www.youtube.com/playlist?list=PL3ewn8T-zRWgO-GAdXjVRh-6thRog6ddg (Part 1 to 14)
+MSDN WebSockets supports in .Net Core - https://learn.microsoft.com/en-us/aspnet/core/fundamentals/websockets?view=aspnetcore-9.0
+JavaScript POST Request - https://www.freecodecamp.org/news/javascript-post-request-how-to-send-an-http-post-request-in-js/
+Others - Microsoft Learn, ChatGPT, StackOverflow, Medium
