@@ -10,15 +10,15 @@ namespace Server.Controllers
         private const double MaxWorkDelay = 4.0;
         private const double MinWorkDelay = 1.0;
         private const int MaxByteLength = 1024;
+        private const string WelcomeMessage = "Welcome";
 
-        private static readonly Queue<string> _messages = new Queue<string>();
+        private static readonly List<WebSocket> _clients = [];
 
         [HttpPost("/server/ping")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult ServerPing()
         {
-            logger.LogDebug("ServerPing");
-            AddMessageToQueue("Pong");
+            BroadcastMessage("Pong");
             return Ok();
         }
 
@@ -26,12 +26,11 @@ namespace Server.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult WorkStart([FromBody] WorkModel workModel)
         {
-            logger.LogDebug("WorkStart({Id})", workModel.Id);
-            AddMessageToQueue($"WorkStarted(Id:{workModel.Id})");
+            BroadcastMessage($"WorkStarted(Id:{workModel.Id})");
             Task.Run(async () =>
             {
                 await Task.Delay(GetWorkDuration());
-                AddMessageToQueue($"WorkCompleted(Id:{workModel.Id})");
+                BroadcastMessage($"WorkCompleted(Id:{workModel.Id})");
             }).ConfigureAwait(false);
             return Ok();
         }
@@ -42,8 +41,21 @@ namespace Server.Controllers
             if (HttpContext.WebSockets.IsWebSocketRequest)
             {
                 using var webSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();
-                await SendMessage(webSocket, "Welcome");
-                await RelayMessages(webSocket);
+                await SendMessage(webSocket, WelcomeMessage);
+
+                lock (_clients)
+                    _clients.Add(webSocket);
+
+                try
+                {
+                    await WaitForClose(webSocket);
+                }
+                finally
+                {
+                    lock (_clients)
+                        _clients.Remove(webSocket);
+                    logger.LogDebug("\x1B[42mRemoved client\x1B[49m");
+                }
             }
             else
             {
@@ -58,19 +70,14 @@ namespace Server.Controllers
             return TimeSpan.FromSeconds(duration);
         }
 
-        private static void AddMessageToQueue(string message)
+        private static void BroadcastMessage(string message)
         {
-            lock (_messages)
+            lock (_clients)
             {
-                _messages.Enqueue(message);
-            }
-        }
-
-        private static string? GetMessageFromQueue()
-        {
-            lock (_messages)
-            {
-                return _messages.Count > 0 ? _messages.Dequeue() : null;
+                foreach (var client in _clients)
+                {
+                    SendMessage(client, message).ConfigureAwait(false);
+                }
             }
         }
 
@@ -81,22 +88,14 @@ namespace Server.Controllers
             await websocket.SendAsync(messageArray, messageType, endOfMessage, CancellationToken.None);
         }
 
-        private static async Task RelayMessages(WebSocket webSocket)
+        private async Task WaitForClose(WebSocket webSocket)
         {
             while (true)
             {
                 var buffer = new byte[MaxByteLength];
-                var receiveTask = webSocket.ReceiveAsync(
+                var receiveResult = await webSocket.ReceiveAsync(
                     new ArraySegment<byte>(buffer), CancellationToken.None);
 
-                while (!receiveTask.IsCompleted)
-                {
-                    var message = GetMessageFromQueue();
-                    if (message is not null)
-                        await SendMessage(webSocket, message);
-                }
-
-                var receiveResult = receiveTask.Result;
                 if (receiveResult.CloseStatus.HasValue)
                 {
                     await webSocket.CloseAsync(
@@ -104,6 +103,11 @@ namespace Server.Controllers
                         receiveResult.CloseStatusDescription,
                         CancellationToken.None);
                     break;
+                }
+                else
+                {
+                    var message = Encoding.UTF8.GetString(buffer);
+                    logger.LogDebug("\u001b[42mUnexpected message: {message}\u001b[49m", message);
                 }
             }
         }

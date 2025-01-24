@@ -11,16 +11,6 @@
         .commslog-data {
             font-family: Consolas, Courier New, Courier, monospace;
         }
-
-        .commslog-server {
-            background-color: red;
-            color: white
-        }
-
-        .commslog-client {
-            background-color: green;
-            color: white
-        }
     </style>
 </head>
 <body>
@@ -30,32 +20,26 @@
         <label for="connectionUrl">WebSocket Server URL:</label>
         <input id="connectionUrl" />
         <button id="connectButton" type="submit">Connect</button>
-        <button id="closeButton" disabled>Disconnect</button>
+        <button id="disconnectButton" disabled>Disconnect</button>
     </div>
     <p></p>
     <div>
-        <button id="pingServerButton" disabled>Ping Server</button>
+        <button id="pingServerButton">Ping Server</button>
     </div>
     <p></p>
     <div>
-        <button id="startWorkButton" disabled>Start Work</button>
+        <button id="startWorkButton">Start Work</button>
         <label for="workId">Work Id:</label>
-        <input id="workId" disabled />
+        <input id="workId" />
     </div>
 
     <h2>Communication Log</h2>
     <table style="width: 800px">
-        <thead>
-            <tr>
-                <td style="width: 100px">From</td>
-                <td style="width: 100px">To</td>
-                <td>Data</td>
-            </tr>
-        </thead>
         <tbody id="commsLog">
         </tbody>
     </table>
 
+    <script src="/_framework/aspnetcore-browser-refresh.js"></script>
     <script>
         var connectionUrl = document.getElementById("connectionUrl");
         var connectButton = document.getElementById("connectButton");
@@ -64,7 +48,7 @@
         var startWorkButton = document.getElementById("startWorkButton");
         var workId = document.getElementById("workId");
         var commsLog = document.getElementById("commsLog");
-        var closeButton = document.getElementById("closeButton");
+        var disconnectButton = document.getElementById("disconnectButton");
         var socket;
 
         var scheme = document.location.protocol === "https:" ? "wss" : "ws";
@@ -74,16 +58,10 @@
 
         function updateState() {
             function disable() {
-                pingServerButton.disabled = true;
-                startWorkButton.disabled = true;
-                workId.disabled = true;
-                closeButton.disabled = true;
+                disconnectButton.disabled = true;
             }
             function enable() {
-                pingServerButton.disabled = false;
-                startWorkButton.disabled = false;
-                workId.disabled = false;
-                closeButton.disabled = false;
+                disconnectButton.disabled = false;
             }
 
             connectionUrl.disabled = true;
@@ -119,7 +97,7 @@
             }
         }
 
-        closeButton.onclick = function () {
+        disconnectButton.onclick = function () {
             if (!socket || socket.readyState !== WebSocket.OPEN) {
                 alert("socket not connected");
             }
@@ -127,10 +105,11 @@
         };
 
         pingServerButton.onclick = function () {
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                alert("socket not connected");
-            }
             var pingServerUrl = document.location.protocol + "//" + document.location.hostname + port + "/server/ping";
+
+            commsLog.innerHTML += '<tr>' +
+                '<td class="commslog-data">HTTP POST request to /server/ping</td></tr>';
+
             fetch(pingServerUrl, {
                 method: "POST",
                 body: JSON.stringify({}),
@@ -141,12 +120,12 @@
         }
 
         startWorkButton.onclick = function () {
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                alert("socket not connected");
-            }
             var startWorkUrl = document.location.protocol + "//" + document.location.hostname + port + "/work/start";
             var workBody = JSON.stringify({ Id: workId.value });
-            console.log(workBody);
+
+            commsLog.innerHTML += '<tr>' +
+                '<td class="commslog-data">HTTP POST request to /work/start with body:' + htmlEscape(workBody) + '</td></tr>';
+
             fetch(startWorkUrl, {
                 method: "POST",
                 body: workBody,
@@ -162,21 +141,19 @@
             socket.onopen = function (event) {
                 updateState();
                 commsLog.innerHTML += '<tr>' +
-                    '<td colspan="3" class="commslog-data">Connection opened</td>' +
+                    '<td class="commslog-data">Connection opened</td>' +
                     '</tr>';
             };
             socket.onclose = function (event) {
                 updateState();
                 commsLog.innerHTML += '<tr>' +
-                    '<td colspan="3" class="commslog-data">Connection closed. Code: ' + htmlEscape(event.code) + '. Reason: ' + htmlEscape(event.reason) + '</td>' +
+                    '<td class="commslog-data">Connection closed. Code: ' + htmlEscape(event.code) + '. Reason: ' + htmlEscape(event.reason) + '</td>' +
                     '</tr>';
             };
             socket.onerror = updateState;
             socket.onmessage = function (event) {
                 commsLog.innerHTML += '<tr>' +
-                    '<td class="commslog-server">Server</td>' +
-                    '<td class="commslog-client">Client</td>' +
-                    '<td class="commslog-data">' + htmlEscape(event.data) + '</td></tr>';
+                    '<td class="commslog-data">Received from Server: ' + htmlEscape(event.data) + '</td></tr>';
             };
         };
 
