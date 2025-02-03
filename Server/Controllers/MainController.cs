@@ -50,6 +50,10 @@ namespace Server.Controllers
                 {
                     await WaitForClose(webSocket);
                 }
+                catch (ObjectDisposedException e)
+                {
+                    logger.LogWarning("Connection ({socket}) was closed abruptly", webSocket);
+                }
                 finally
                 {
                     lock (_clients)
